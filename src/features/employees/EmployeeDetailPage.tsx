@@ -1,34 +1,35 @@
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { ArrowLeft, Pencil, X } from 'lucide-react'
 import { employeeApi } from '@/shared/api/endpoints'
 import { useActiveScreen } from '@/shared/permissions/activeScreen'
 import { ActionGate } from '@/shared/permissions/ScreenGuard'
-import { Button, Card, CardHeader, PageHeader, Spinner } from '@/shared/ui/primitives'
-import { Alert, ApiErrorPanel } from '@/shared/ui/feedback'
-import { EMPLOYEE_COLUMN_ORDER } from '@/shared/ui/FieldTable'
+import { Avatar, Badge, Button, Card, PageHeader, SkeletonCard } from '@/shared/ui/primitives'
+import { EmptyState, ErrorState, Toast } from '@/shared/ui/feedback'
+import { EMPLOYEE_COLUMN_ORDER, humanizeValue } from '@/shared/ui/FieldTable'
 import { FieldSections } from './FieldSections'
 import { EmployeeFieldForm } from './EmployeeFieldForm'
-import { ScopeSummary } from './ScopeSummary'
 
 /**
- * One page serves EMPLOYEE_DETAIL, EMPLOYEE_EDIT and MY_PROFILE: the screen context decides which
- * record is reachable and which fields are readable/updatable, so the layout stays identical.
+ * One layout serves "someone's profile", "edit that profile" and "my profile". What changes between
+ * them is not the page — it is which record is reachable and which fields come back, and the server
+ * decides both.
  */
 export function EmployeeDetailPage({
   employeeId,
   title,
-  eyebrow,
   description,
+  backTo,
   alwaysEditing = false,
 }: {
   employeeId: number | null
   title: string
-  eyebrow: string
   description?: string
+  backTo?: { to: string; label: string }
   alwaysEditing?: boolean
 }) {
-  const { screen, permission } = useActiveScreen()
+  const { screen } = useActiveScreen()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(alwaysEditing)
   const [saved, setSaved] = useState(false)
@@ -44,81 +45,121 @@ export function EmployeeDetailPage({
     onSuccess: (row) => {
       queryClient.setQueryData(['employee', screen.screenCode, employeeId], row)
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['my-profile'] })
       setSaved(true)
       if (!alwaysEditing) setEditing(false)
     },
   })
 
   if (employeeId == null) {
-    return <Alert tone="warning" title="Không xác định được nhân viên">Tài khoản này chưa gắn với hồ sơ nhân viên.</Alert>
+    return (
+      <Card>
+        <EmptyState
+          title="Tài khoản của bạn chưa gắn với hồ sơ nhân viên"
+          description="Nhờ bộ phận nhân sự liên kết tài khoản với hồ sơ để xem thông tin cá nhân."
+        />
+      </Card>
+    )
   }
+
+  const fields = detail.data?.fields ?? {}
+  const name = typeof fields.fullName === 'string' ? fields.fullName : `Nhân viên #${employeeId}`
+  const status = typeof fields.status === 'string' ? fields.status : undefined
 
   return (
     <>
       <PageHeader
-        eyebrow={eyebrow}
         title={title}
         description={description}
-        actions={
-          <>
-            <Link to="/hrm/employees">
-              <Button variant="ghost" size="sm">
-                ← Danh sách
-              </Button>
+        breadcrumb={
+          backTo && (
+            <Link to={backTo.to} className="inline-flex items-center gap-1.5 hover:text-ink">
+              <ArrowLeft size={14} strokeWidth={2} aria-hidden />
+              {backTo.label}
             </Link>
-            {!alwaysEditing && (
-              <ActionGate action="UPDATE">
-                <Button size="sm" onClick={() => setEditing((v) => !v)} data-testid="toggle-edit">
-                  {editing ? 'Xem' : 'Chỉnh sửa'}
-                </Button>
-              </ActionGate>
-            )}
-          </>
+          )
+        }
+        actions={
+          !alwaysEditing && (
+            <ActionGate action="UPDATE">
+              <Button
+                variant={editing ? 'secondary' : 'primary'}
+                icon={editing ? X : Pencil}
+                onClick={() => setEditing((value) => !value)}
+                data-testid="toggle-edit"
+              >
+                {editing ? 'Huỷ chỉnh sửa' : 'Chỉnh sửa'}
+              </Button>
+            </ActionGate>
+          )
         }
       />
 
-      <ScopeSummary permission={permission} />
-
-      {detail.isLoading && <Spinner />}
-      {detail.error != null && <ApiErrorPanel error={detail.error} className="mt-6" />}
-
-      {detail.data && (
-        <Card className="mt-6">
-          <CardHeader
-            eyebrow={editing ? 'Chỉnh sửa' : 'Hồ sơ'}
-            title={String(detail.data.fields.fullName ?? `Nhân viên #${detail.data.id}`)}
-            description={
-              editing
-                ? 'Chỉ những trường thuộc field group được phép ghi mới hiển thị. Backend vẫn kiểm tra lại.'
-                : 'Trường không đọc được sẽ không xuất hiện — không phải hiển thị rỗng.'
-            }
-          />
-
-          {/* Also shown while still editing: the edit-only screen never leaves edit mode. */}
-          {saved && (
-            <Alert tone="success" title="Đã lưu" className="mb-5">
-              Cập nhật thành công.
-            </Alert>
-          )}
-
-          {editing ? (
-            <EmployeeFieldForm
-              mode="update"
-              initial={detail.data.fields}
-              submitLabel="Lưu thay đổi"
-              pending={update.isPending}
-              error={update.error}
-              onSubmit={(values) => {
-                setSaved(false)
-                update.mutate(values)
-              }}
-              onCancel={alwaysEditing ? undefined : () => setEditing(false)}
-            />
-          ) : (
-            <FieldSections fields={detail.data.fields} order={EMPLOYEE_COLUMN_ORDER} />
-          )}
+      {detail.isLoading && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      )}
+      {detail.error != null && (
+        <Card padded={false}>
+          <ErrorState error={detail.error} onRetry={() => detail.refetch()} />
         </Card>
       )}
+
+      {detail.data && (
+        <div className="space-y-4">
+          <Card>
+            <div className="flex flex-wrap items-center gap-4">
+              <Avatar name={name} size="lg" />
+              <div className="min-w-0">
+                <h2 className="truncate text-xl font-semibold">{name}</h2>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-muted">
+                  {typeof fields.jobTitle === 'string' && <span>{fields.jobTitle}</span>}
+                  {typeof fields.team === 'string' && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span>{fields.team}</span>
+                    </>
+                  )}
+                  {typeof fields.employeeCode === 'string' && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="font-mono text-xs">{fields.employeeCode}</span>
+                    </>
+                  )}
+                </p>
+              </div>
+              {status && (
+                <span className="ml-auto">
+                  <Badge tone={status === 'ACTIVE' ? 'positive' : 'caution'}>{humanizeValue('status', status)}</Badge>
+                </span>
+              )}
+            </div>
+          </Card>
+
+          {editing ? (
+            <Card>
+              <EmployeeFieldForm
+                mode="update"
+                initial={fields}
+                submitLabel="Lưu thay đổi"
+                pending={update.isPending}
+                error={update.error}
+                onSubmit={(values) => {
+                  setSaved(false)
+                  update.mutate(values)
+                }}
+                onCancel={alwaysEditing ? undefined : () => setEditing(false)}
+              />
+            </Card>
+          ) : (
+            <FieldSections fields={fields} order={EMPLOYEE_COLUMN_ORDER} />
+          )}
+        </div>
+      )}
+
+      <Toast open={saved} message="Đã lưu thay đổi" onClose={() => setSaved(false)} />
     </>
   )
 }

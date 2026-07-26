@@ -1,100 +1,118 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { Plus, Search, UserPlus, Users } from 'lucide-react'
 import { employeeApi } from '@/shared/api/endpoints'
 import { useActiveScreen } from '@/shared/permissions/activeScreen'
 import { ActionGate } from '@/shared/permissions/ScreenGuard'
-import { Badge, Button, Card, Input, PageHeader, Spinner } from '@/shared/ui/primitives'
-import { ApiErrorPanel } from '@/shared/ui/feedback'
+import { ScopeNotice } from '@/shared/permissions/ScopeNotice'
+import { Button, Card, PageHeader, SearchInput, SkeletonRows } from '@/shared/ui/primitives'
+import { EmptyState, ErrorState } from '@/shared/ui/feedback'
 import { EMPLOYEE_COLUMN_ORDER, FieldTable } from '@/shared/ui/FieldTable'
-import { ScopeSummary } from './ScopeSummary'
 
 export function EmployeeListPage() {
   const { screen, permission } = useActiveScreen()
-  const [search, setSearch] = useState('')
-  const [query, setQuery] = useState('')
+  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const applied = params.get('q') ?? ''
+  const [draft, setDraft] = useState(applied)
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['employees', screen.screenCode, query],
-    queryFn: () => employeeApi.search(screen, { q: query || undefined, size: 50 }),
+  useEffect(() => setDraft(applied), [applied])
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['employees', screen.screenCode, applied],
+    queryFn: () => employeeApi.search(screen, { q: applied || undefined, size: 50 }),
   })
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    const term = draft.trim()
+    setParams(term ? { q: term } : {}, { replace: true })
+  }
 
   return (
     <>
       <PageHeader
-        eyebrow="HRM · Employee"
-        title="Danh sách nhân viên"
-        description="Số dòng phụ thuộc record scope, số cột phụ thuộc field group — cả hai gắn với màn hình EMPLOYEE_LIST, không gắn với endpoint."
+        title="Nhân viên"
+        description="Danh bạ nhân sự bạn phụ trách."
         actions={
           <ActionGate action="CREATE">
             <Link to="/hrm/employees/new">
-              <Button size="sm">Thêm nhân viên</Button>
+              <Button icon={Plus}>Thêm nhân viên</Button>
             </Link>
           </ActionGate>
         }
       />
 
-      <ScopeSummary permission={permission} rowCount={data?.totalElements} />
-
-      <Card className="mt-6">
-        <form
-          className="mb-5 flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault()
-            setQuery(search.trim())
-          }}
-        >
-          <div className="w-full max-w-xs">
-            <Input
+      <Card padded={false}>
+        <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
+          <form onSubmit={submit} className="min-w-0 flex-1 sm:max-w-sm">
+            <SearchInput
+              icon={Search}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
               placeholder="Tìm theo tên hoặc mã nhân viên"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
               aria-label="Tìm nhân viên"
               data-testid="employee-search"
             />
-          </div>
-          <Button type="submit" variant="secondary" size="md">
-            Tìm
-          </Button>
-          {query && (
+          </form>
+          {applied && (
             <Button
-              type="button"
               variant="ghost"
-              size="md"
-              onClick={() => {
-                setSearch('')
-                setQuery('')
-              }}
+              size="sm"
+              onClick={() => setParams({}, { replace: true })}
+              data-testid="clear-search"
             >
-              Xoá lọc
+              Xoá bộ lọc
             </Button>
           )}
-          <span className="ml-auto">
-            <Badge tone="muted" data-testid="employee-total">
-              {data?.totalElements ?? 0} bản ghi
-            </Badge>
+          <span className="ml-auto text-sm text-ink-muted" data-testid="employee-total">
+            {data ? `${data.totalElements} nhân viên` : ''}
           </span>
-        </form>
+        </div>
 
-        {isLoading && <Spinner />}
-        {error != null && <ApiErrorPanel error={error} />}
+        {isLoading && <SkeletonRows rows={6} columns={5} />}
+        {error != null && <ErrorState error={error} onRetry={() => refetch()} />}
+
         {data && (
           <FieldTable
             page={data}
             columnOrder={EMPLOYEE_COLUMN_ORDER}
             testId="employee-table"
-            emptyHint="Record scope của bạn trên màn hình này không bao gồm bản ghi nào."
-            rowHref={(id) => (
-              <Link
-                to={`/hrm/employees/${id}`}
-                className="font-display text-[10px] font-semibold uppercase tracking-label text-brand-500 hover:underline"
-              >
-                Chi tiết
-              </Link>
-            )}
+            onRowClick={(id) => navigate(`/hrm/employees/${id}`)}
+            emptyTitle={applied ? 'Không tìm thấy ai khớp từ khoá' : 'Danh bạ của bạn đang trống'}
+            emptyDescription={
+              applied
+                ? 'Thử một tên hoặc mã nhân viên khác.'
+                : 'Khi có nhân viên thuộc phạm vi bạn phụ trách, họ sẽ xuất hiện ở đây.'
+            }
+            emptyAction={
+              applied ? (
+                <Button variant="secondary" onClick={() => setParams({}, { replace: true })}>
+                  Xoá bộ lọc
+                </Button>
+              ) : (
+                <ActionGate action="CREATE">
+                  <Link to="/hrm/employees/new">
+                    <Button icon={UserPlus}>Thêm nhân viên đầu tiên</Button>
+                  </Link>
+                </ActionGate>
+              )
+            }
           />
         )}
       </Card>
+
+      {data && data.content.length > 0 && (
+        <div className="mt-3">
+          <ScopeNotice permission={permission} count={data.totalElements} noun="nhân viên" />
+        </div>
+      )}
     </>
   )
+}
+
+/** Shared by the pages that show a person-shaped list but have nothing to show yet. */
+export function NoPeopleState() {
+  return <EmptyState icon={Users} title="Chưa có nhân viên nào trong phạm vi của bạn" />
 }

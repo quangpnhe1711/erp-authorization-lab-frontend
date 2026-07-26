@@ -81,7 +81,7 @@ describe('EmployeeFieldForm', () => {
       <EmployeeFieldForm mode="update" initial={{}} submitLabel="Lưu" onSubmit={() => {}} />,
       { ...basePermission, updatableFields: [], updatableFieldGroups: [] },
     )
-    expect(screen.getByText(/không cho phép bạn ghi trường nào/i)).toBeInTheDocument()
+    expect(screen.getByText('Bạn chỉ có quyền xem hồ sơ này')).toBeInTheDocument()
   })
 
   it('uses creatableFields in create mode', () => {

@@ -14,37 +14,68 @@
   }
 
   body {
-    @apply bg-surface-sunken font-sans text-[15px] text-ink antialiased;
+    @apply bg-canvas font-sans text-base text-ink antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
   }
 
   h1,
   h2,
-  h3,
-  h4 {
-    @apply font-display text-ink;
+  h3 {
+    @apply font-display font-semibold text-ink;
+  }
+
+  /* Figures line up column-to-column in tables and KPI cards. */
+  table,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
   }
 
   ::selection {
-    @apply bg-brand-500 text-white;
+    @apply bg-brand-100 text-brand-700;
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-brand-500/70 ring-offset-2 ring-offset-white;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full border-[3px] border-solid border-transparent bg-line-strong bg-clip-content;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
-  /* Luvina uses tight all-caps eyebrows above every section title. */
-  .eyebrow {
-    @apply font-display text-[11px] font-bold uppercase tracking-label text-brand-500;
+  /* Small uppercase section label. Grey, never red — red is reserved for actions. */
+  .section-label {
+    @apply text-micro font-semibold uppercase tracking-[0.08em] text-ink-subtle;
   }
 
-  .rule-accent {
-    @apply relative pl-4;
+  .skeleton {
+    @apply animate-shimmer rounded-control bg-[linear-gradient(90deg,#EEF0F3_25%,#F6F7F9_37%,#EEF0F3_63%)] bg-[length:200%_100%];
   }
 
-  .rule-accent::before {
-    content: '';
-    @apply absolute left-0 top-1 h-[calc(100%-0.5rem)] w-[3px] bg-brand-500;
+  /*
+   * Developer mode swaps the interface face for a monospace one inside its own panels:
+   * crossing into the machinery should look like crossing into the machinery.
+   */
+  .dev-surface {
+    @apply bg-ink font-mono text-[12px] leading-5 text-[#D6DBE3];
   }
 }

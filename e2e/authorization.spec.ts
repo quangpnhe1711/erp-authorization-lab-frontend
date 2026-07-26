@@ -1,83 +1,92 @@
 import { expect, test } from '@playwright/test'
-import { columnHeaders, login, logout, rowCount, USERS } from './helpers'
+import { columnHeaders, DISPLAY_NAMES, login, logout, rowCount, setDeveloperMode, USERS } from './helpers'
 
 /**
- * These mirror docs/DEMO_SCENARIOS: each test states a permission rule and checks the UI reflects
- * what the backend actually returned — no mocks, no fixtures.
+ * What a person sees, said in their language. Each test states a business rule and checks the UI
+ * reflects what the backend actually returned — no mocks, and no implementation vocabulary on
+ * screen unless developer mode is deliberately switched on.
  */
 
-test.describe('Scenario 1 — record scope decides the row set', () => {
-  test('EMPLOYEE sees only their own team', async ({ page }) => {
+test.describe('Everyone sees the slice of the company they are responsible for', () => {
+  test('an employee sees their own team', async ({ page }) => {
     await login(page, USERS.employee)
     await page.getByTestId('nav-EMPLOYEE_LIST').click()
 
-    await expect(page.getByTestId('scope-list')).toContainText('TEAM')
     expect(await rowCount(page, 'employee-table')).toBe(3)
+    await expect(page.getByTestId('scope-notice')).toContainText('Đang hiển thị 3 nhân viên')
+    await expect(page.getByTestId('scope-notice')).toContainText('nhóm')
   })
 
-  test('HR_ADMIN sees every employee', async ({ page }) => {
+  test('an administrator sees the whole company', async ({ page }) => {
     await login(page, USERS.admin)
     await page.goto('/hrm/employees')
 
-    await expect(page.getByTestId('scope-list')).toContainText('ALL')
     expect(await rowCount(page, 'employee-table')).toBe(8)
+    await expect(page.getByTestId('scope-notice')).toContainText('toàn công ty')
   })
 
-  test('multi-role sees the UNION of TEAM and RESPONSIBILITY, not the larger of the two', async ({ page }) => {
+  test('someone with two jobs sees both slices added together', async ({ page }) => {
     await login(page, USERS.multiRole)
     await page.goto('/hrm/employees')
 
-    const scopes = page.getByTestId('scope-list')
-    await expect(scopes).toContainText('TEAM')
-    await expect(scopes).toContainText('RESPONSIBILITY')
-    // Frontend team (3, own team) ∪ Backend team (3, responsibility) = 6
+    // Own team (3) plus the team she is assigned to look after (3).
     expect(await rowCount(page, 'employee-table')).toBe(6)
+    const notice = page.getByTestId('scope-notice')
+    await expect(notice).toContainText('nhóm')
+    await expect(notice).toContainText('các bộ phận bạn phụ trách')
   })
 })
 
-test.describe('Scenario 2 — field groups decide the column set', () => {
-  test('EMPLOYEE gets public + organization columns and no salary', async ({ page }) => {
+test.describe('People only see the information they are cleared for', () => {
+  test('an employee gets names and org, never pay', async ({ page }) => {
     await login(page, USERS.employee)
     await page.goto('/hrm/employees')
 
     const headers = await columnHeaders(page, 'employee-table')
-    expect(headers).toContain('Mã nhân viên')
+    expect(headers).toContain('Họ và tên')
     expect(headers).toContain('Phòng ban')
     expect(headers).not.toContain('Lương')
     expect(headers).not.toContain('Email cá nhân')
   })
 
-  test('HR_ADMIN additionally gets the sensitive salary column', async ({ page }) => {
+  test('an administrator additionally gets pay', async ({ page }) => {
     await login(page, USERS.admin)
     await page.goto('/hrm/employees')
 
     const headers = await columnHeaders(page, 'employee-table')
-    expect(headers.some((h) => h.startsWith('Lương'))).toBe(true)
+    expect(headers).toContain('Lương')
     expect(headers).toContain('Email cá nhân')
+  })
+
+  test('coded values are shown as words', async ({ page }) => {
+    await login(page, USERS.admin)
+    await page.goto('/hrm/employees')
+
+    await expect(page.getByTestId('employee-table')).toContainText('Đang làm việc')
+    await expect(page.getByTestId('employee-table')).not.toContainText('ACTIVE')
+    await expect(page.getByTestId('employee-table')).not.toContainText('FULLTIME')
   })
 })
 
-test.describe('Scenario 3 — one API, three screens, three answers', () => {
-  test('EMPLOYEE_SEARCH returns a different result per screen context', async ({ page }) => {
+test.describe('The same directory answers differently depending on the job at hand', () => {
+  test('browsing people, staffing a project and picking a member are three different lists', async ({ page }) => {
     await login(page, USERS.manager)
 
     await page.goto('/hrm/employees')
-    await expect(page.getByTestId('scope-list')).toContainText('TEAM')
     const listRows = await rowCount(page, 'employee-table')
     const listHeaders = await columnHeaders(page, 'employee-table')
 
     await page.goto('/projects/1/members/add')
-    await expect(page.getByTestId('scope-list')).toContainText('DEPARTMENT')
     const pickerRows = await rowCount(page, 'picker-table')
 
     expect(listRows).toBe(3)
     expect(pickerRows).toBe(6)
-    // EMPLOYEE_LIST grants CONTACT_INFORMATION to a manager; EMPLOYEE_PICKER does not.
+    // A manager sees contact details of their own team, but not of everyone they may staff.
     expect(listHeaders).toContain('Email cá nhân')
     expect(await columnHeaders(page, 'picker-table')).not.toContain('Email cá nhân')
   })
 
-  test('MEMBER_LIST mixes employee and project field groups', async ({ page }) => {
+  test('a project member list mixes people and project information', async ({ page }) => {
     await login(page, USERS.manager)
     await page.goto('/projects/1/members')
 
@@ -89,25 +98,26 @@ test.describe('Scenario 3 — one API, three screens, three answers', () => {
   })
 })
 
-test.describe('Scenario 4 — screen access is enforced, not hidden', () => {
-  test('a screen outside the role is blocked even when reached by URL', async ({ page }) => {
+test.describe('Areas nobody granted are closed, and the refusal is readable', () => {
+  test('typing the URL of a closed area explains itself in plain language', async ({ page }) => {
     await login(page, USERS.employee)
 
     await expect(page.getByTestId('nav-SALARY_LIST')).toHaveCount(0)
     await page.goto('/hrm/salaries')
-    await expect(page.getByTestId('screen-access-denied')).toHaveAttribute(
-      'data-error-code',
-      'SCREEN_ACCESS_DENIED',
-    )
 
-    await page.goto('/admin/users')
     await expect(page.getByTestId('screen-access-denied')).toBeVisible()
+    await expect(page.getByText('Bạn chưa được cấp quyền vào mục này')).toBeVisible()
+    // No error code, no screen code — the person is told what to do, not what broke.
+    await expect(page.getByText(/SCREEN_ACCESS_DENIED/)).toHaveCount(0)
+    await expect(page.getByText(/nhờ quản trị viên/i)).toBeVisible()
   })
 
-  test('the sidebar only lists screens the server granted', async ({ page }) => {
+  test('the menu is organised by work, and lists only what was granted', async ({ page }) => {
     await login(page, USERS.employee)
-    await expect(page.getByTestId('nav-EMPLOYEE_LIST')).toBeVisible()
-    await expect(page.getByTestId('nav-MY_PROFILE')).toBeVisible()
+    const sidebar = page.getByTestId('sidebar')
+    await expect(sidebar).toContainText('Con người')
+    await expect(sidebar).toContainText('Nhân viên')
+    await expect(sidebar).not.toContainText('EMPLOYEE_LIST')
     await expect(page.getByTestId('nav-USER_MANAGEMENT')).toHaveCount(0)
     await expect(page.getByTestId('nav-AUDIT_LOG_LIST')).toHaveCount(0)
 
@@ -115,27 +125,26 @@ test.describe('Scenario 4 — screen access is enforced, not hidden', () => {
     await login(page, USERS.admin)
     await expect(page.getByTestId('nav-SALARY_LIST')).toBeVisible()
     await expect(page.getByTestId('nav-USER_MANAGEMENT')).toBeVisible()
+    await expect(page.getByTestId('sidebar')).toContainText('Quản trị')
   })
 })
 
-test.describe('Scenario 5 — field-level update authorization', () => {
-  test('an employee may update contact fields on their own profile', async ({ page }) => {
+test.describe('Editing respects what each person may change', () => {
+  test('an employee can update their own contact details', async ({ page }) => {
     await login(page, USERS.employee)
     await page.goto('/hrm/my-profile')
 
-    await expect(page.getByTestId('scope-list')).toContainText('SELF')
     await page.getByTestId('toggle-edit').click()
-
     const phone = page.getByLabel('Số điện thoại')
     const next = `09${Date.now().toString().slice(-8)}`
     await phone.fill(next)
     await page.getByTestId('field-form-submit').click()
 
-    await expect(page.getByText('Cập nhật thành công.')).toBeVisible()
+    await expect(page.getByTestId('toast')).toContainText('Đã lưu thay đổi')
     await expect(page.locator('[data-field="phoneNumber"]')).toHaveText(next)
   })
 
-  test('non-updatable fields are never offered, and the API rejects them anyway', async ({ page }) => {
+  test('fields they may not change are never offered, and the API refuses them anyway', async ({ page }) => {
     await login(page, USERS.employee)
     await page.goto('/hrm/my-profile')
     await page.getByTestId('toggle-edit').click()
@@ -144,7 +153,7 @@ test.describe('Scenario 5 — field-level update authorization', () => {
     await expect(page.getByLabel('Lương')).toHaveCount(0)
     await expect(page.getByLabel('Họ và tên')).toHaveCount(0)
 
-    // Same request the UI refuses to build, made directly: the backend is the real gate.
+    // The request the UI refuses to build, made directly — the server is the real gate.
     const token = await page.evaluate(() => localStorage.getItem('eal.accessToken'))
     const response = await page.request.patch('http://localhost:8080/api/employees/4', {
       headers: {
@@ -158,14 +167,11 @@ test.describe('Scenario 5 — field-level update authorization', () => {
     expect(response.status()).toBe(403)
     expect((await response.json()).code).toBe('FIELD_PERMISSION_DENIED')
   })
-})
 
-test.describe('Scenario 6 — a wider screen offers wider write access', () => {
-  test('EMPLOYEE_EDIT lets HR_ADMIN write organization and salary fields', async ({ page }) => {
+  test('an administrator gets the wider edit form, including pay and organisation', async ({ page }) => {
     await login(page, USERS.admin)
     await page.goto('/hrm/employees/4/edit')
 
-    // Organization fields are written by id, so the form needs the ORGANIZATION_OPTIONS lookup.
     const department = page.getByLabel('Phòng ban')
     await expect(department).toBeVisible()
     await expect(department.locator('option')).toContainText(['Development Department'])
@@ -173,12 +179,11 @@ test.describe('Scenario 6 — a wider screen offers wider write access', () => {
     await expect(page.getByLabel('Lương')).toBeVisible()
 
     const title = page.getByLabel('Chức danh')
-    const next = `Backend Developer ${Date.now().toString().slice(-4)}`
-    await title.fill(next)
+    await title.fill(`Backend Developer ${Date.now().toString().slice(-4)}`)
     await page.getByTestId('field-form-submit').click()
-    await expect(page.getByText('Cập nhật thành công.')).toBeVisible()
+    await expect(page.getByTestId('toast')).toContainText('Đã lưu thay đổi')
 
-    // Restore the seeded value so the other scenarios keep describing the demo data.
+    // Put the seeded value back so the other scenarios keep describing the demo data.
     await page.getByLabel('Chức danh').fill('Backend Developer')
     await page.getByTestId('field-form-submit').click()
     await page.reload()
@@ -186,18 +191,51 @@ test.describe('Scenario 6 — a wider screen offers wider write access', () => {
   })
 })
 
-test.describe('Scenario 7 — permission debug drawer explains the result', () => {
-  test('the drawer shows the headers sent, the scopes and the last call', async ({ page }) => {
+test.describe('The workspace greets you by name and shows your work', () => {
+  test('the dashboard leads with the person, not the system', async ({ page }) => {
+    await login(page, USERS.manager)
+
+    await expect(page.getByRole('heading', { name: DISPLAY_NAMES[USERS.manager] })).toBeVisible()
+    await expect(page.getByText(/Chào buổi/)).toBeVisible()
+    await expect(page.getByText('Nhân viên bạn quản lý')).toBeVisible()
+
+    // Nothing on the default dashboard speaks in implementation terms.
+    const body = page.locator('main')
+    await expect(body).not.toContainText('EMPLOYEE_LIST')
+    await expect(body).not.toContainText('RECORD_SCOPE')
+    await expect(body).not.toContainText('TEAM_MANAGER')
+  })
+
+  test('global search jumps into the directory', async ({ page }) => {
+    await login(page, USERS.admin)
+    await page.getByTestId('global-search').fill('Alice')
+    await page.getByTestId('global-search').press('Enter')
+
+    await page.waitForURL('**/hrm/employees?q=Alice')
+    await expect(page.getByTestId('employee-table')).toContainText('Alice Nguyen')
+    expect(await rowCount(page, 'employee-table')).toBe(1)
+  })
+})
+
+test.describe('Developer mode is the only place codes appear', () => {
+  test('diagnostics stay hidden until an engineer asks for them', async ({ page }) => {
     await login(page, USERS.employee)
     await page.goto('/hrm/employees')
     await expect(page.getByTestId('employee-table')).toBeVisible()
+    await expect(page.getByTestId('diagnostics-toggle')).toHaveCount(0)
 
-    await page.getByTestId('permission-debug-toggle').click()
-    const drawer = page.getByTestId('permission-debug-drawer')
-    await expect(drawer).toBeVisible()
-    await expect(drawer).toContainText('X-Module-Key')
-    await expect(drawer).toContainText('EMPLOYEE_LIST')
-    await expect(drawer).toContainText('TEAM')
-    await expect(drawer).toContainText('EMPLOYEE_SEARCH')
+    await setDeveloperMode(page, true)
+    await expect(page.getByTestId('developer-mode-chip')).toBeVisible()
+    await page.getByTestId('diagnostics-toggle').click()
+
+    const panel = page.getByTestId('diagnostics-panel')
+    await expect(panel).toContainText('X-Module-Key')
+    await expect(panel).toContainText('EMPLOYEE_LIST')
+    await expect(panel).toContainText('TEAM')
+    await expect(panel).toContainText('EMPLOYEE_SEARCH')
+
+    await page.getByTestId('diagnostics-close').click()
+    await setDeveloperMode(page, false)
+    await expect(page.getByTestId('diagnostics-toggle')).toHaveCount(0)
   })
 })

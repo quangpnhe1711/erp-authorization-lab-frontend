@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { ApiError } from '@/shared/api/client'
 import { AuthProvider } from '@/shared/auth/AuthProvider'
+import { DeveloperModeProvider } from '@/shared/devmode/DeveloperModeProvider'
 
 export function createQueryClient() {
   return new QueryClient({
@@ -23,7 +24,9 @@ export function AppProviders({ children, client }: { children: ReactNode; client
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>{children}</AuthProvider>
+        <DeveloperModeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </DeveloperModeProvider>
       </BrowserRouter>
     </QueryClientProvider>
   )

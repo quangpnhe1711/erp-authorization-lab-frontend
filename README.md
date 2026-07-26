@@ -1,15 +1,15 @@
-# ERP Authorization Lab — Frontend
+# ACME Workspace — Frontend
 
-React UI for the **TKCB permission model** reference app:
-`User → Role → Module/Submodule/Screen → API use-case → Action → Record scope → Field group`.
+The user-facing half of the **ERP Authorization Lab**: an HR and delivery workspace where what you
+see is decided entirely by the backend's permission model
+(`User → Role → Module/Submodule/Screen → API use-case → Action → Record scope → Field group`).
 
-The interface never decides what you may see. Every list, column, button and menu entry is a
-rendering of what the backend returned — so the same screen looks different for every demo account,
-and the UI can explain *why*.
+The product never shows that model to the people using it. A manager sees *"Đang hiển thị 6 nhân
+viên thuộc nhóm Backend Team và các bộ phận bạn phụ trách"*, not `TEAM ∪ RESPONSIBILITY`. Every
+code, screen id and permission flag lives behind an opt-in **Developer mode**.
 
-- Backend + database + docker compose: [erp-authorization-lab](https://github.com/quangpnhe1711/erp-authorization-lab)
-- Design language: modelled on [luvina.net](https://luvina.net) — Montserrat display type, all-caps
-  eyebrows, hairline borders, square corners, one strong red (`#CE181E`).
+- Backend, database and docker compose: [erp-authorization-lab](https://github.com/quangpnhe1711/erp-authorization-lab)
+- Design system, and the reasoning behind every UI decision: [docs/DESIGN.md](docs/DESIGN.md)
 
 ---
 
@@ -23,84 +23,82 @@ npm run dev            # http://localhost:5173, proxies /api → http://localhos
 Start the backend first (from the backend repo):
 
 ```bash
-docker compose up -d postgres backend
+POSTGRES_PORT=55432 docker compose up -d postgres backend
 ```
 
-Point the dev proxy somewhere else with `BACKEND_ORIGIN=http://host:port npm run dev`.
+Point the dev proxy elsewhere with `BACKEND_ORIGIN=http://host:port npm run dev`.
 
 ### Demo accounts
 
-Password `Password@123` for all of them; the login screen lists them and fills the form on click.
+Password `Password@123`. The sign-in screen lists them as job descriptions and fills the form on
+click.
 
-| Username | Roles | EMPLOYEE_LIST shows |
+| Sign in as | Job | Sees |
 |---|---|---|
-| `employee@example.com` | EMPLOYEE | TEAM — 3 rows, public + organization fields |
-| `manager@example.com` | TEAM_MANAGER + EMPLOYEE | TEAM + contact fields, may edit organization on detail |
-| `hr@example.com` | HR_OFFICER | RESPONSIBILITY — the Development department |
-| `admin@example.com` | HR_ADMIN + SYSTEM_ADMIN | ALL — 8 rows including salary, plus the config screens |
-| `multi-role@example.com` | TEAM_MANAGER + HR_OFFICER | **TEAM ∪ RESPONSIBILITY** — 6 rows |
+| `employee@example.com` | Nhân viên | Own profile, 3 colleagues in their team |
+| `manager@example.com` | Quản lý nhóm | Their team plus the project they run |
+| `hr@example.com` | Nhân sự | Everyone in the Development department |
+| `admin@example.com` | Quản trị hệ thống | All 8 people, payroll, and the configuration areas |
+| `multi-role@example.com` | Kiêm nhiệm | Own team **plus** the team they look after — 6 people |
 
 ---
 
-## How authorization reaches the UI
+## How authorization reaches the interface
 
-Three server calls carry the whole model into the browser:
+Three calls carry the whole model into the browser; nothing is inferred from role names.
 
 | Call | Purpose |
 |---|---|
-| `GET /api/me/navigation` | The module → submodule → screen tree this user may open. The sidebar is this response; it is never derived from role names. |
-| `GET /api/me/screen-permission` | Effective permission on one screen: access, actions, record scopes, readable/creatable/updatable field groups and fields. |
-| every business call | Sends `X-Module-Key`, `X-Submodule-Key`, `X-Screen-Code` so the backend re-resolves the claim and answers for *that* screen. |
+| `GET /api/me/navigation` | Which areas this person may open. The sidebar renders a **business taxonomy** filtered by this answer — an item the server did not return is never drawn. |
+| `GET /api/me/screen-permission` | Effective permission on one area: actions, record scope, readable / writable field groups. |
+| every business call | Sends `X-Module-Key`, `X-Submodule-Key`, `X-Screen-Code`, so the backend answers for *that* area. |
 
-Three rules follow, and the code sticks to them:
+Four rules the code holds to:
 
-1. **`ScreenGuard` gates a route** ([src/shared/permissions/ScreenGuard.tsx](src/shared/permissions/ScreenGuard.tsx)).
-   It fetches the screen permission before rendering and blocks with `SCREEN_ACCESS_DENIED` when
-   the answer says no — including when the URL is typed by hand. The check is advisory: the API
-   rejects the call anyway.
-2. **Columns come from the response, not from the code**
-   ([src/shared/ui/FieldTable.tsx](src/shared/ui/FieldTable.tsx)). A field the caller may not read is
-   absent from `fields`, so it is absent from the table. Nothing is greyed out, because nothing was
-   sent.
+1. **`ScreenGuard` gates a route** ([src/shared/permissions/ScreenGuard.tsx](src/shared/permissions/ScreenGuard.tsx))
+   and, when access is refused, explains it in a sentence — no code, no stack, a next step.
+2. **Columns come from the response, not the code**
+   ([src/shared/ui/FieldTable.tsx](src/shared/ui/FieldTable.tsx)). A field the caller may not read
+   never arrives, so it can never be drawn. Coded values (`ACTIVE`, `FULLTIME`) are rendered as
+   words.
 3. **Forms render only writable fields**
-   ([src/features/employees/EmployeeFieldForm.tsx](src/features/employees/EmployeeFieldForm.tsx)),
-   taken from `updatableFields` / `creatableFields`, and submit only what changed.
+   ([src/features/employees/EmployeeFieldForm.tsx](src/features/employees/EmployeeFieldForm.tsx))
+   and submit only what changed.
+4. **`ActionGate` hides an action nobody in this role can perform** — a permanently disabled button
+   is a dead end, not an explanation.
 
-### Permission debug drawer
+### Developer mode
 
-Every guarded screen carries one (bottom-right). It shows the headers actually sent, the merged
-permission the server computed, which roles contributed it, and the last API calls made from this
-screen with their `readableFields`, row counts and error codes. When a call fails, the toggle turns
-red and names the error code.
+Toggle it in the account menu or with `Ctrl/Cmd + Alt + D`. It adds a diagnostics drawer (request
+headers, merged permission, contributing roles, recent calls), raw scope codes on the scope
+sentence, error codes on failures, and a permission-decision tab on the activity page. It changes
+nothing the server enforces.
 
 ---
 
-## Screens
+## Areas
 
-| Module | Screen | Route |
+| Section | Screens |
+|---|---|
+| Công việc | Tổng quan (dashboard), Hồ sơ của tôi |
+| Con người | Nhân viên (list · detail · edit · create), Lương |
+| Dự án | Dự án, chi tiết, thành viên, thêm thành viên |
+| Quản trị | Người dùng, Phân vai trò, Quyền theo vai trò (3 tabs), Phân công phụ trách, Danh mục hệ thống (4 tabs) |
+| Nhật ký | Hoạt động (+ Kiểm tra quyền in developer mode) |
+
+**The demo worth showing:** `GET /api/employees` is called from three areas.
+
+| Area (as `manager@example.com`) | Rows | Contact details |
 |---|---|---|
-| Dashboard | `DASHBOARD` | `/dashboard` |
-| HRM · Employee | `MY_PROFILE`, `EMPLOYEE_LIST`, `EMPLOYEE_DETAIL`, `EMPLOYEE_CREATE`, `EMPLOYEE_EDIT` | `/hrm/…` |
-| HRM · Salary | `SALARY_LIST` | `/hrm/salaries` |
-| Project | `PROJECT_LIST`, `PROJECT_DETAIL` | `/projects`, `/projects/:id` |
-| Project · Member | `MEMBER_LIST`, `EMPLOYEE_PICKER` | `/projects/:id/members`, `…/add` |
-| Administration | user / role / module / submodule / screen / field-group catalogues, screen-permission, record-scope and field-group-permission editors, user-role and responsibility assignment | `/admin/…` |
-| Audit | `AUDIT_LOG_LIST`, `PERMISSION_DECISION_TRACE` | `/audit/…` |
+| Nhân viên | 3 (their team) | yes |
+| Thành viên dự án | 3 (the project they run) | no |
+| Thêm thành viên | 6 (their department) | no |
 
-**The demo worth showing:** `GET /api/employees` is called from three screens.
+Same endpoint, same session — three answers, decided by the area you are working in.
 
-| Screen (as `manager@example.com`) | Scope | Rows | Contact fields |
-|---|---|---|---|
-| `EMPLOYEE_LIST` | TEAM | 3 | yes |
-| `MEMBER_LIST` | RESPONSIBILITY | 3 members of Project Alpha | no |
-| `EMPLOYEE_PICKER` | DEPARTMENT | 6 | no |
-
-Same endpoint, same user, same session — three answers, decided entirely by the screen context.
-
-The three configuration editors write back through `PUT /api/admin/role-permissions/{roleId}`, so a
-change made in the Administration UI takes effect on the very next request. The e2e suite proves it:
-it grants `HR_OFFICER` access to `SALARY_LIST`, logs in as the HR officer to confirm the screen
-opens, then reverts.
+The three permission editors write through `PUT /api/admin/role-permissions/{roleId}` and take
+effect on the next request. The e2e suite proves it: it opens Bảng lương for HR Officer, signs in as
+that person to confirm, then puts it back.
 
 ---
 
@@ -108,24 +106,26 @@ opens, then reverts.
 
 ```
 src/
-├── app/          providers (React Query, router, auth) + route table
-├── layouts/      application shell — server-driven sidebar, topbar
+├── app/          providers (React Query, router, auth, developer mode) + route table
+├── layouts/      shell — collapsible sidebar, topbar, search, notifications, account menu
 ├── shared/
-│   ├── api/      axios client (screen-context headers, token refresh, typed errors) + endpoints
-│   ├── auth/     session bootstrap, login/logout
-│   ├── permissions/  screen registry, ScreenGuard, ActionGate, debug drawer
-│   └── ui/       design-system primitives + the permission-aware FieldTable
-└── features/     auth · dashboard · employees · salary · projects · administration · audit
+│   ├── api/      axios client (screen-context headers, single-flight refresh, typed errors)
+│   ├── auth/     session bootstrap, sign in / out
+│   ├── devmode/  developer-mode switch + diagnostics drawer
+│   ├── navigation/ the business taxonomy and its labels
+│   ├── permissions/ screen registry, ScreenGuard, ActionGate, the plain-language scope sentence
+│   └── ui/       design-system primitives, feedback layer, permission-aware FieldTable
+└── features/     auth · dashboard · employees · salary · projects · administration · activity
 ```
 
 Notable choices:
 
 - **Same-origin API.** `VITE_API_BASE_URL` defaults to empty, so the app calls `/api/*`; Vite proxies
-  it in development and nginx proxies it in the container. No CORS preflight, no build-time host.
-- **Single-flight token refresh.** A burst of 401s triggers one `/api/auth/refresh`, not N — refresh
-  tokens rotate on use, so parallel refreshes would invalidate each other.
-- **403 is an answer, not a hiccup.** React Query does not retry 4xx; retrying a permission denial
-  only spams the decision log.
+  it in development, nginx in the container. No CORS, no build-time host.
+- **Single-flight token refresh.** A burst of 401s triggers one `/api/auth/refresh`; refresh tokens
+  rotate on use, so parallel refreshes would invalidate each other.
+- **403 is an answer, not a hiccup.** React Query does not retry 4xx — retrying a refusal only fills
+  the decision log.
 
 ---
 
@@ -133,23 +133,26 @@ Notable choices:
 
 ```bash
 npm run typecheck
-npm test               # Vitest — 26 unit tests
-npm run e2e            # Playwright — 21 tests against a running backend
+npm test               # Vitest — 43 unit tests
+npm run e2e            # Playwright — 25 tests against a running backend
 ```
 
 Unit tests cover the rules that must not regress: a withheld field never becomes a column, a
-non-updatable field never becomes an input, `ScreenGuard` blocks and `ActionGate` hides.
+non-updatable field never becomes an input, the scope sentence never prints a scope code, an
+unmapped audit action never leaks its constant, and the sidebar never offers an area the server
+did not grant.
 
-The e2e suite drives the real stack — no mocks — and mirrors the demo scenarios: record scope row
-counts per role, the multi-role union, field-group column sets, `SCREEN_ACCESS_DENIED` on a typed
-URL, a successful contact-field update, `FIELD_PERMISSION_DENIED` on a field the UI refuses to even
-render, the audit trail, the decision trace, and the live config change described above.
+The e2e suite drives the real stack and asserts the product, not the plumbing: row counts per role,
+the union for someone with two jobs, coded values rendered as words, a refusal explained in plain
+language, a contact update round-tripping, `FIELD_PERMISSION_DENIED` returned for a field the UI
+refuses to render, the activity feed reading as sentences, a live permission change applied and
+reverted, and diagnostics staying hidden until developer mode is switched on.
 
 ```bash
 npx playwright install chromium   # first run only
 ```
 
-Playwright starts the dev server itself; set `E2E_NO_SERVER=1` to reuse one you already have.
+Playwright starts the dev server itself; set `E2E_NO_SERVER=1` to reuse a running one.
 
 ---
 
@@ -163,5 +166,5 @@ docker run -p 8081:80 eal-frontend      # expects a backend reachable as http://
 Or, from the backend repo with this repository cloned into `./frontend`:
 
 ```bash
-docker compose up --build
+POSTGRES_PORT=55432 docker compose up --build
 ```

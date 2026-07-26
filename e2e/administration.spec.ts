@@ -1,70 +1,132 @@
 import { expect, test } from '@playwright/test'
-import { login, logout, USERS } from './helpers'
+import { login, logout, setDeveloperMode, USERS } from './helpers'
 
-/** Administration + audit screens. The last test mutates config and reverts it in the same run. */
+/** Administration and activity, from an administrator's point of view. */
 
-test.describe('Administration catalogue', () => {
+test.describe('Administration reads as job descriptions, not tables', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, USERS.admin)
   })
 
-  test('lists users with their effective roles', async ({ page }) => {
+  test('the user list names roles the way people describe their jobs', async ({ page }) => {
     await page.goto('/admin/users')
     const table = page.getByTestId('user-table')
-    await expect(table).toBeVisible()
     await expect(table).toContainText('multi-role@example.com')
-    await expect(table.locator('tr', { hasText: 'multi-role@example.com' })).toContainText('TEAM_MANAGER')
-    await expect(table.locator('tr', { hasText: 'multi-role@example.com' })).toContainText('HR_OFFICER')
+    const row = table.locator('tr', { hasText: 'multi-role@example.com' })
+    await expect(row).toContainText('Team Manager')
+    await expect(row).toContainText('HR Officer')
+    // The underlying constants stay out of the interface.
+    await expect(table).not.toContainText('TEAM_MANAGER')
   })
 
-  test('shows every screen with the API use-cases it may invoke', async ({ page }) => {
-    await page.goto('/admin/screens')
-    const table = page.getByTestId('screen-table')
-    await expect(table.locator('tr', { hasText: 'EMPLOYEE_LIST' })).toContainText('EMPLOYEE_SEARCH')
-    await expect(table.locator('tr', { hasText: 'MY_PROFILE' })).toContainText('EMPLOYEE_UPDATE')
-    await expect(table.locator('tr', { hasText: 'MY_PROFILE' })).not.toContainText('EMPLOYEE_SEARCH')
+  test('the catalogue groups reference data instead of scattering it', async ({ page }) => {
+    await page.goto('/admin/catalog')
+    await expect(page.getByTestId('role-table')).toBeVisible()
+
+    await page.getByTestId('tab-fields').click()
+    const groups = page.getByTestId('field-group-list')
+    await expect(groups).toContainText('Thông tin lương')
+    await expect(groups).toContainText('Thông tin ngân hàng')
+    await expect(groups).toContainText('Nhạy cảm')
   })
 
-  test('renders the field-group catalogue with sensitive markers', async ({ page }) => {
-    await page.goto('/admin/field-groups')
-    const list = page.getByTestId('field-group-list')
-    await expect(list).toContainText('SALARY_INFORMATION')
-    await expect(list).toContainText('BANK_INFORMATION')
-    await expect(list).toContainText('employeeCode')
-  })
-
-  test('loads the role permission matrix for the selected role', async ({ page }) => {
-    await page.goto('/admin/screen-permissions')
+  test('role permissions are three questions on one page', async ({ page }) => {
+    await page.goto('/admin/access')
     await expect(page.getByTestId('role-select')).toBeVisible()
-    await page.getByTestId('role-select').selectOption({ label: 'HR_ADMIN' })
+    await page.getByTestId('role-select').selectOption({ label: 'HR Admin' })
     await expect(page.getByTestId('access-EMPLOYEE_LIST')).toBeChecked()
     await expect(page.getByTestId('action-EMPLOYEE_LIST-READ')).toBeChecked()
     await expect(page.getByTestId('action-EMPLOYEE_LIST-DELETE')).not.toBeChecked()
-  })
 
-  test('shows record scopes as a multi-select union, not a single value', async ({ page }) => {
-    await page.goto('/admin/record-scopes')
-    await page.getByTestId('role-select').selectOption({ label: 'TEAM_MANAGER' })
+    await page.getByTestId('tab-scope').click()
+    await page.getByTestId('role-select').selectOption({ label: 'Team Manager' })
     await expect(page.getByTestId('scope-EMPLOYEE_LIST-TEAM')).toBeChecked()
     await expect(page.getByTestId('scope-MEMBER_LIST-RESPONSIBILITY')).toBeChecked()
     await expect(page.getByTestId('scope-EMPLOYEE_LIST-ALL')).not.toBeChecked()
   })
+
+  test('data scope is a multi-select union, spelled out in words', async ({ page }) => {
+    await page.goto('/admin/access')
+    await page.getByTestId('tab-scope').click()
+    const matrix = page.getByTestId('matrix-scope').first()
+    await expect(matrix).toContainText('Được phân công')
+    await expect(matrix).toContainText('Toàn công ty')
+    await expect(matrix).not.toContainText('RESPONSIBILITY')
+  })
+
+  test('granting a role a new area takes effect immediately, then is reverted', async ({ page }) => {
+    // Start from a known state rather than assuming it — a half-finished earlier run must not
+    // decide whether this one passes.
+    await page.goto('/admin/access')
+    await page.getByTestId('role-select').selectOption({ label: 'HR Officer' })
+    await page.getByTestId('access-SALARY_LIST').uncheck()
+    await page.getByTestId('action-SALARY_LIST-READ').uncheck()
+    // Save stays disabled while nothing is dirty, which is the normal case on a clean database.
+    const save = page.getByTestId('save-permissions')
+    if (await save.isEnabled()) await save.click()
+
+    await logout(page)
+    await login(page, USERS.hr)
+    await page.goto('/hrm/salaries')
+    await expect(page.getByTestId('screen-access-denied')).toBeVisible()
+
+    await logout(page)
+    await login(page, USERS.admin)
+    await page.goto('/admin/access')
+    await page.getByTestId('role-select').selectOption({ label: 'HR Officer' })
+    await page.getByTestId('access-SALARY_LIST').check()
+    await page.getByTestId('action-SALARY_LIST-READ').check()
+    await page.getByTestId('save-permissions').click()
+    await expect(page.getByTestId('toast')).toContainText('Đã lưu thay đổi quyền')
+
+    await logout(page)
+    await login(page, USERS.hr)
+    await page.goto('/hrm/salaries')
+    // The area is open now. It is still empty — being allowed in is not the same as being given
+    // data, which is exactly the distinction the model draws.
+    await expect(page.getByTestId('screen-access-denied')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Lương' })).toBeVisible()
+
+    await logout(page)
+    await login(page, USERS.admin)
+    await page.goto('/admin/access')
+    await page.getByTestId('role-select').selectOption({ label: 'HR Officer' })
+    await page.getByTestId('access-SALARY_LIST').uncheck()
+    await page.getByTestId('action-SALARY_LIST-READ').uncheck()
+    await page.getByTestId('save-permissions').click()
+    await expect(page.getByTestId('toast')).toContainText('Đã lưu thay đổi quyền')
+
+    await page.reload()
+    await page.getByTestId('role-select').selectOption({ label: 'HR Officer' })
+    await expect(page.getByTestId('access-SALARY_LIST')).not.toBeChecked()
+  })
 })
 
-test.describe('Audit', () => {
+test.describe('Activity is a feed of events, not a log dump', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, USERS.admin)
   })
 
-  test('audit log records the logins that just happened', async ({ page }) => {
-    await page.goto('/audit/logs')
-    await expect(page.getByTestId('audit-table')).toContainText('LOGIN')
-    await expect(page.getByTestId('audit-table')).toContainText(USERS.admin)
+  test('each entry reads as a sentence', async ({ page }) => {
+    await page.goto('/activity')
+    const feed = page.getByTestId('activity-list')
+    await expect(feed).toContainText('đã đăng nhập')
+    await expect(feed).toContainText(USERS.admin)
+    await expect(feed).not.toContainText('LOGIN')
   })
 
-  test('decision trace can be filtered down to denials', async ({ page }) => {
-    await page.goto('/audit/decisions')
-    // The table shell renders while the query is in flight — wait for an actual row.
+  test('the feed can be narrowed to one kind of event', async ({ page }) => {
+    await page.goto('/activity')
+    await page.getByTestId('activity-filter').selectOption('ROLE_PERMISSION_UPDATE')
+    await expect(page.getByTestId('activity-list').or(page.getByText('Chưa có hoạt động nào'))).toBeVisible()
+  })
+
+  test('the permission trace is developer-only and filters to refusals', async ({ page }) => {
+    await page.goto('/activity')
+    await expect(page.getByTestId('tab-trace')).toHaveCount(0)
+
+    await setDeveloperMode(page, true)
+    await page.getByTestId('tab-trace').click()
     await expect(page.getByTestId('decision-row').first()).toBeVisible()
 
     await page.getByTestId('decision-filter').selectOption('DENY')
@@ -73,49 +135,38 @@ test.describe('Audit', () => {
       .getByTestId('decision-row')
       .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-decision')))
     expect(decisions.length).toBeGreaterThan(0)
-    expect(decisions.every((d) => d === 'DENY')).toBe(true)
-  })
+    expect(decisions.every((decision) => decision === 'DENY')).toBe(true)
 
-  test('a denied request from another user is visible in the trace', async ({ page }) => {
-    await page.goto('/audit/decisions')
-    await page.getByTestId('decision-screen-filter').fill('USER_MANAGEMENT')
-    await expect(page.getByTestId('decision-table')).toContainText('USER_MANAGEMENT')
+    await setDeveloperMode(page, false)
+    await expect(page.getByTestId('tab-trace')).toHaveCount(0)
   })
 })
 
-test.describe('Changing configuration changes behaviour', () => {
-  test('granting HR_OFFICER access to SALARY_LIST takes effect, then is reverted', async ({ page }) => {
+test.describe('Assignments are done in a dialog, not a bare form', () => {
+  test('responsibility can be granted and taken back', async ({ page }) => {
     await login(page, USERS.admin)
-    await page.goto('/admin/screen-permissions')
-    await page.getByTestId('role-select').selectOption({ label: 'HR_OFFICER' })
+    await page.goto('/admin/responsibilities')
 
-    const access = page.getByTestId('access-SALARY_LIST')
-    await expect(access).not.toBeChecked()
+    const rows = page.getByTestId('responsibility-table').locator('tbody tr')
+    await expect(rows.first()).toBeVisible()
+    const before = await rows.count()
 
-    await access.check()
-    await page.getByTestId('action-SALARY_LIST-READ').check()
-    await page.getByTestId('save-permissions').click()
-    await expect(page.getByText('Cấu hình quyền đã được ghi.', { exact: false })).toBeVisible()
+    await page.getByTestId('open-assign-responsibility').click()
+    const userSelect = page.getByLabel('Người phụ trách')
+    const userValue = await userSelect
+      .locator('option', { hasText: 'employee@example.com' })
+      .getAttribute('value')
+    await userSelect.selectOption(userValue!)
+    await page.getByLabel('Loại đối tượng').selectOption('TEAM')
+    await page.getByLabel('Đối tượng', { exact: true }).selectOption({ label: 'Frontend Team' })
+    await page.getByTestId('assign-responsibility').click()
 
-    // The HR officer can now open a screen that was denied a moment ago.
-    await logout(page)
-    await login(page, USERS.hr)
-    await page.goto('/hrm/salaries')
-    await expect(page.getByTestId('screen-access-denied')).toHaveCount(0)
-    await expect(page.getByTestId('scope-summary')).toBeVisible()
+    await expect(page.getByTestId('toast')).toContainText('Đã phân công phụ trách')
+    await expect(rows).toHaveCount(before + 1)
 
-    // Revert so the seeded demo matrix stays as documented.
-    await logout(page)
-    await login(page, USERS.admin)
-    await page.goto('/admin/screen-permissions')
-    await page.getByTestId('role-select').selectOption({ label: 'HR_OFFICER' })
-    await page.getByTestId('access-SALARY_LIST').uncheck()
-    await page.getByTestId('action-SALARY_LIST-READ').uncheck()
-    await page.getByTestId('save-permissions').click()
-    await expect(page.getByText('Cấu hình quyền đã được ghi.', { exact: false })).toBeVisible()
-
-    await page.reload()
-    await page.getByTestId('role-select').selectOption({ label: 'HR_OFFICER' })
-    await expect(page.getByTestId('access-SALARY_LIST')).not.toBeChecked()
+    const added = page.getByTestId('responsibility-table').locator('tr', { hasText: 'employee@example.com' })
+    await expect(added).toContainText('Frontend Team')
+    await added.getByRole('button', { name: 'Gỡ' }).click()
+    await expect(rows).toHaveCount(before)
   })
 })

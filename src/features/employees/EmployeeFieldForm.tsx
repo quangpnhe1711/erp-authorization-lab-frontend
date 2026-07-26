@@ -1,25 +1,36 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Lock } from 'lucide-react'
 import { organizationApi } from '@/shared/api/endpoints'
 import type { OrganizationOptions } from '@/shared/api/types'
 import { useActiveScreen } from '@/shared/permissions/activeScreen'
 import { FIELD_GROUP_LABELS, FIELD_GROUP_OF, FIELD_LABELS } from '@/shared/permissions/screens'
 import { Button, Input, Label, Select } from '@/shared/ui/primitives'
-import { ApiErrorPanel } from '@/shared/ui/feedback'
+import { EmptyState, ErrorNotice } from '@/shared/ui/feedback'
 import { EMPLOYEE_COLUMN_ORDER } from '@/shared/ui/FieldTable'
 
 const ID_FIELDS = new Set(['department', 'team', 'manager'])
-const ENUM_OPTIONS: Record<string, string[]> = {
-  status: ['ACTIVE', 'INACTIVE'],
-  contractType: ['FULLTIME', 'PARTTIME', 'CONTRACT'],
+const ENUM_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  status: [
+    { value: 'ACTIVE', label: 'Đang làm việc' },
+    { value: 'INACTIVE', label: 'Đã nghỉ' },
+  ],
+  contractType: [
+    { value: 'FULLTIME', label: 'Toàn thời gian' },
+    { value: 'PARTTIME', label: 'Bán thời gian' },
+    { value: 'CONTRACT', label: 'Hợp đồng' },
+  ],
 }
+
+const REQUIRED_ON_CREATE = new Set(['employeeCode', 'fullName'])
 
 export type FormMode = 'update' | 'create'
 
 /**
- * Renders exactly the fields the server says are writable on this screen
- * ({@code updatableFields} / {@code creatableFields}) and submits only what changed.
- * A field the backend would reject is never rendered — but the backend still rejects it.
+ * The form shows the fields this person can actually write, and submits only what they changed.
+ *
+ * It is not a security boundary — the API checks the same thing again — but it is the difference
+ * between a form that works and a form that offers inputs which will be rejected on save.
  */
 export function EmployeeFieldForm({
   mode,
@@ -43,7 +54,7 @@ export function EmployeeFieldForm({
     () => orderFields(mode === 'create' ? permission?.creatableFields : permission?.updatableFields),
     [mode, permission],
   )
-  const needsOptions = writable.some((f) => ID_FIELDS.has(f))
+  const needsOptions = writable.some((field) => ID_FIELDS.has(field))
   const { data: options } = useQuery<OrganizationOptions>({
     queryKey: ['org-options', screen.screenCode],
     queryFn: () => organizationApi.options(screen),
@@ -51,12 +62,12 @@ export function EmployeeFieldForm({
     staleTime: 300_000,
   })
 
-  const [values, setValues] = useState<Record<string, string>>(() => seed(writable, initial, options))
+  const [values, setValues] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Set<string>>(new Set())
 
-  // Options arrive after the first render; re-seed the id fields once they do.
+  // Options land after the first render, so the id fields re-seed once they arrive.
   const seeded = useMemo(() => seed(writable, initial, options), [writable, initial, options])
-  const effective = (field: string) => (touched.has(field) ? (values[field] ?? '') : (seeded[field] ?? ''))
+  const valueOf = (field: string) => (touched.has(field) ? (values[field] ?? '') : (seeded[field] ?? ''))
 
   const setField = (field: string, value: string) => {
     setValues((prev) => ({ ...prev, [field]: value }))
@@ -65,9 +76,11 @@ export function EmployeeFieldForm({
 
   if (writable.length === 0) {
     return (
-      <p className="border border-dashed border-line-strong bg-surface-raised px-4 py-6 text-center text-[13px] text-ink-faint">
-        Màn hình này không cho phép bạn ghi trường nào.
-      </p>
+      <EmptyState
+        icon={Lock}
+        title="Bạn chỉ có quyền xem hồ sơ này"
+        description="Liên hệ quản trị viên nếu bạn cần chỉnh sửa thông tin."
+      />
     )
   }
 
@@ -75,7 +88,7 @@ export function EmployeeFieldForm({
     event.preventDefault()
     const payload: Record<string, unknown> = {}
     for (const field of writable) {
-      const raw = effective(field)
+      const raw = valueOf(field)
       if (mode === 'create') {
         if (raw !== '') payload[field] = normalize(field, raw)
       } else if (raw !== (seeded[field] ?? '')) {
@@ -90,22 +103,24 @@ export function EmployeeFieldForm({
   return (
     <form onSubmit={submit} className="space-y-6" data-testid="employee-field-form">
       {[...groups.entries()].map(([group, fields]) => (
-        <fieldset key={group} className="border border-line p-5">
-          <legend className="eyebrow px-2">{FIELD_GROUP_LABELS[group] ?? group}</legend>
+        <section key={group}>
+          <h3 className="mb-3 text-sm font-semibold text-ink">{FIELD_GROUP_LABELS[group] ?? group}</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             {fields.map((field) => (
               <div key={field}>
-                <Label htmlFor={`field-${field}`}>{FIELD_LABELS[field] ?? field}</Label>
-                {renderControl(field, effective(field), (v) => setField(field, v), options)}
+                <Label htmlFor={`field-${field}`} hint={mode === 'create' && REQUIRED_ON_CREATE.has(field) ? 'bắt buộc' : undefined}>
+                  {FIELD_LABELS[field] ?? field}
+                </Label>
+                {renderControl(field, valueOf(field), (next) => setField(field, next), options, mode)}
               </div>
             ))}
           </div>
-        </fieldset>
+        </section>
       ))}
 
-      {error != null && <ApiErrorPanel error={error} />}
+      <ErrorNotice error={error} />
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 border-t border-line pt-5">
         <Button type="submit" disabled={pending} data-testid="field-form-submit">
           {pending ? 'Đang lưu…' : submitLabel}
         </Button>
@@ -124,14 +139,17 @@ function renderControl(
   value: string,
   onChange: (value: string) => void,
   options: OrganizationOptions | undefined,
+  mode: FormMode,
 ) {
   const id = `field-${field}`
+  const required = mode === 'create' && REQUIRED_ON_CREATE.has(field)
+
   if (ID_FIELDS.has(field)) {
     const list =
       field === 'department' ? options?.departments : field === 'team' ? options?.teams : options?.managers
     return (
-      <Select id={id} name={field} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— Không chọn —</option>
+      <Select id={id} name={field} value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Chưa chọn</option>
         {(list ?? []).map((option) => (
           <option key={option.id} value={String(option.id)}>
             {option.name}
@@ -140,20 +158,31 @@ function renderControl(
       </Select>
     )
   }
+
   if (ENUM_OPTIONS[field]) {
     return (
-      <Select id={id} name={field} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— Không chọn —</option>
+      <Select id={id} name={field} value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Chưa chọn</option>
         {ENUM_OPTIONS[field]!.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </Select>
     )
   }
+
   const type = field === 'dateOfBirth' ? 'date' : field === 'salary' ? 'number' : 'text'
-  return <Input id={id} name={field} type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+  return (
+    <Input
+      id={id}
+      name={field}
+      type={type}
+      required={required}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  )
 }
 
 function seed(
@@ -165,7 +194,7 @@ function seed(
   for (const field of fields) {
     const raw = initial[field]
     if (ID_FIELDS.has(field)) {
-      // The read projection carries names; the write path wants ids.
+      // Records read back a department *name*; saving one needs its id.
       const list =
         field === 'department' ? options?.departments : field === 'team' ? options?.teams : options?.managers
       const match = (list ?? []).find((option) => option.name === raw)
