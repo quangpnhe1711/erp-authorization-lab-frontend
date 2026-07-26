@@ -94,7 +94,8 @@ export function EmployeeDetailPage({
             }
           />
 
-          {saved && !editing && (
+          {/* Also shown while still editing: the edit-only screen never leaves edit mode. */}
+          {saved && (
             <Alert tone="success" title="Đã lưu" className="mb-5">
               Cập nhật thành công.
             </Alert>

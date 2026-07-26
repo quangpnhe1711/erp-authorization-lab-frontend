@@ -160,7 +160,33 @@ test.describe('Scenario 5 — field-level update authorization', () => {
   })
 })
 
-test.describe('Scenario 6 — permission debug drawer explains the result', () => {
+test.describe('Scenario 6 — a wider screen offers wider write access', () => {
+  test('EMPLOYEE_EDIT lets HR_ADMIN write organization and salary fields', async ({ page }) => {
+    await login(page, USERS.admin)
+    await page.goto('/hrm/employees/4/edit')
+
+    // Organization fields are written by id, so the form needs the ORGANIZATION_OPTIONS lookup.
+    const department = page.getByLabel('Phòng ban')
+    await expect(department).toBeVisible()
+    await expect(department.locator('option')).toContainText(['Development Department'])
+    await expect(page.getByLabel('Quản lý')).toBeVisible()
+    await expect(page.getByLabel('Lương')).toBeVisible()
+
+    const title = page.getByLabel('Chức danh')
+    const next = `Backend Developer ${Date.now().toString().slice(-4)}`
+    await title.fill(next)
+    await page.getByTestId('field-form-submit').click()
+    await expect(page.getByText('Cập nhật thành công.')).toBeVisible()
+
+    // Restore the seeded value so the other scenarios keep describing the demo data.
+    await page.getByLabel('Chức danh').fill('Backend Developer')
+    await page.getByTestId('field-form-submit').click()
+    await page.reload()
+    await expect(page.getByLabel('Chức danh')).toHaveValue('Backend Developer')
+  })
+})
+
+test.describe('Scenario 7 — permission debug drawer explains the result', () => {
   test('the drawer shows the headers sent, the scopes and the last call', async ({ page }) => {
     await login(page, USERS.employee)
     await page.goto('/hrm/employees')
