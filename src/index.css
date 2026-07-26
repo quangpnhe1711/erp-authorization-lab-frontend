@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-surface-sunken font-sans text-[15px] text-ink antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display text-ink;
+  }
+
+  ::selection {
+    @apply bg-brand-500 text-white;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+  }
+}
+
+@layer components {
+  /* Luvina uses tight all-caps eyebrows above every section title. */
+  .eyebrow {
+    @apply font-display text-[11px] font-bold uppercase tracking-label text-brand-500;
+  }
+
+  .rule-accent {
+    @apply relative pl-4;
+  }
+
+  .rule-accent::before {
+    content: '';
+    @apply absolute left-0 top-1 h-[calc(100%-0.5rem)] w-[3px] bg-brand-500;
+  }
+}

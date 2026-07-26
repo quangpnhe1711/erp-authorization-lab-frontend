@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Env & secrets (only .env.example is committed)
+.env
+.env.local
+.env.*.local
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+*.log
+
+# TypeScript incremental build state
+*.tsbuildinfo
