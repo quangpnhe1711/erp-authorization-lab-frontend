@@ -3,8 +3,35 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * The semantic palette lives here, not in the components. Tailwind reads these variables through
+   * theme.colors, so switching .dark on <html> re-skins every existing bg-surface / text-ink /
+   * border-line in the app without a single dark: variant.
+   */
   :root {
     color-scheme: light;
+    --ink: 20 22 26;
+    --ink-secondary: 61 68 79;
+    --ink-muted: 91 100 114;
+    --ink-subtle: 138 147 161;
+    --line: 238 240 243;
+    --line-strong: 221 225 231;
+    --canvas: 246 247 249;
+    --surface: 255 255 255;
+    --surface-muted: 250 251 252;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --ink: 237 240 245;
+    --ink-secondary: 199 205 214;
+    --ink-muted: 154 163 176;
+    --ink-subtle: 122 131 145;
+    --line: 39 43 51;
+    --line-strong: 56 62 72;
+    --canvas: 14 16 20;
+    --surface: 22 25 31;
+    --surface-muted: 28 32 39;
   }
 
   html,
@@ -35,7 +62,7 @@
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-500/70 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-brand-500/70 ring-offset-2 ring-offset-canvas;
   }
 
   ::-webkit-scrollbar {
@@ -68,7 +95,13 @@
   }
 
   .skeleton {
-    @apply animate-shimmer rounded-control bg-[linear-gradient(90deg,#EEF0F3_25%,#F6F7F9_37%,#EEF0F3_63%)] bg-[length:200%_100%];
+    @apply animate-shimmer rounded-control bg-[length:200%_100%];
+    background-image: linear-gradient(
+      90deg,
+      rgb(var(--line)) 25%,
+      rgb(var(--surface-muted)) 37%,
+      rgb(var(--line)) 63%
+    );
   }
 
   /*

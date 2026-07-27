@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { ApiError } from '@/shared/api/client'
 import { AuthProvider } from '@/shared/auth/AuthProvider'
 import { DeveloperModeProvider } from '@/shared/devmode/DeveloperModeProvider'
+import { ThemeProvider } from '@/shared/theme/ThemeProvider'
 
 export function createQueryClient() {
   return new QueryClient({
@@ -24,9 +25,11 @@ export function AppProviders({ children, client }: { children: ReactNode; client
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <DeveloperModeProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </DeveloperModeProvider>
+        <ThemeProvider>
+          <DeveloperModeProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </DeveloperModeProvider>
+        </ThemeProvider>
       </BrowserRouter>
     </QueryClientProvider>
   )

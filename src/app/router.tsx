@@ -30,6 +30,18 @@ import {
   UsersPage,
 } from '@/features/administration/directoryPages'
 import { ActivityPage } from '@/features/activity/pages'
+import { EffectivePermissionExplorer } from '@/features/administration/EffectivePermissionExplorer'
+import { LabDashboardPage } from '@/features/lab/LabDashboardPage'
+import {
+  LabFieldGroupsPage,
+  LabFieldsPage,
+  LabModulesPage,
+  LabRolesPage,
+  LabUsersPage,
+} from '@/features/lab/catalogPages'
+import { PermissionConfigPage } from '@/features/lab/PermissionConfigPage'
+import { ExplorerPage } from '@/features/lab/ExplorerPage'
+import { LabAuditPage } from '@/features/lab/LabAuditPage'
 
 /** Wraps a page in its screen context so every call it makes is attributed to the right screen. */
 function screen(key: ScreenKey, element: ReactElement) {
@@ -82,6 +94,7 @@ export function AppRoutes() {
         <Route path="/admin/users" element={screen('USER_MANAGEMENT', <UsersPage />)} />
         <Route path="/admin/user-roles" element={screen('USER_ROLE_ASSIGNMENT', <RoleAssignmentPage />)} />
         <Route path="/admin/access" element={<AccessControlPage />} />
+        <Route path="/admin/effective-permissions" element={screen('PERMISSION_DECISION_TRACE', <EffectivePermissionExplorer />)} />
         <Route path="/admin/catalog" element={<CatalogPage />} />
         <Route
           path="/admin/responsibilities"
@@ -90,6 +103,20 @@ export function AppRoutes() {
 
         {/* Activity */}
         <Route path="/activity" element={screen('AUDIT_LOG_LIST', <ActivityPage />)} />
+
+        {/*
+          Authorization Lab. No ScreenGuard: these screens configure the permission model rather than
+          being governed by it — the server authorises them by role instead (see SecurityConfig).
+        */}
+        <Route path="/lab" element={<LabDashboardPage />} />
+        <Route path="/lab/users" element={<LabUsersPage />} />
+        <Route path="/lab/roles" element={<LabRolesPage />} />
+        <Route path="/lab/modules" element={<LabModulesPage />} />
+        <Route path="/lab/fields" element={<LabFieldsPage />} />
+        <Route path="/lab/field-groups" element={<LabFieldGroupsPage />} />
+        <Route path="/lab/permissions" element={<PermissionConfigPage />} />
+        <Route path="/lab/explorer" element={<ExplorerPage />} />
+        <Route path="/lab/audit" element={<LabAuditPage />} />
 
         {/* Paths the database still advertises as screen routes. */}
         <Route path="/admin/roles" element={<Navigate to="/admin/catalog" replace />} />

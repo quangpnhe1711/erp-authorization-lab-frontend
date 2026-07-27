@@ -21,7 +21,7 @@ test.describe('Everyone sees the slice of the company they are responsible for',
     await login(page, USERS.admin)
     await page.goto('/hrm/employees')
 
-    expect(await rowCount(page, 'employee-table')).toBe(8)
+    expect(await rowCount(page, 'employee-table')).toBe(14)
     await expect(page.getByTestId('scope-notice')).toContainText('toàn công ty')
   })
 

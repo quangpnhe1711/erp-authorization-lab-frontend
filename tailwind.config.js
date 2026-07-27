@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Dark mode flips CSS variables, not component classes: every bg-surface/text-ink/border-line
+  // already in the codebase follows automatically, so no page carries a dark: variant of its own.
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -18,20 +21,21 @@ export default {
           600: '#B31418',
           700: '#8F1114',
         },
+        // Semantic surfaces read from CSS variables so the theme can be swapped at runtime.
         ink: {
-          DEFAULT: '#14161A',
-          secondary: '#3D444F',
-          muted: '#5B6472',
-          subtle: '#8A93A1',
+          DEFAULT: 'rgb(var(--ink) / <alpha-value>)',
+          secondary: 'rgb(var(--ink-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--ink-muted) / <alpha-value>)',
+          subtle: 'rgb(var(--ink-subtle) / <alpha-value>)',
         },
         line: {
-          DEFAULT: '#EEF0F3',
-          strong: '#DDE1E7',
+          DEFAULT: 'rgb(var(--line) / <alpha-value>)',
+          strong: 'rgb(var(--line-strong) / <alpha-value>)',
         },
-        canvas: '#F6F7F9',
+        canvas: 'rgb(var(--canvas) / <alpha-value>)',
         surface: {
-          DEFAULT: '#FFFFFF',
-          muted: '#FAFBFC',
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          muted: 'rgb(var(--surface-muted) / <alpha-value>)',
         },
         positive: { 50: '#ECFDF5', 500: '#0E9F6E', 700: '#047857' },
         caution: { 50: '#FFFBEB', 500: '#D97706', 700: '#B45309' },

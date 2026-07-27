@@ -17,6 +17,8 @@ import { useNavigation } from '@/shared/permissions/hooks'
 import { visibleSections, type NavItem } from '@/shared/navigation/businessNav'
 import { useMyProfile } from '@/features/dashboard/useMyProfile'
 import { Avatar, Badge, IconButton, SearchInput, Switch } from '@/shared/ui/primitives'
+import { ThemeToggle } from '@/shared/theme/ThemeProvider'
+import { LAB_SECTION } from '@/features/lab/nav'
 import { NotificationMenu } from './NotificationMenu'
 
 const COLLAPSE_KEY = 'eal.sidebarCollapsed'
@@ -30,7 +32,15 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [query, setQuery] = useState('')
 
-  const sections = useMemo(() => visibleSections(navigationTree), [navigationTree])
+  /**
+   * Business sections come from the server's navigation tree. The Authorization Lab does not: it is
+   * the tool that configures that tree, so gating it on the tree would hide the repair kit exactly
+   * when the configuration is broken. It follows the SYSTEM_ADMIN role instead.
+   */
+  const sections = useMemo(() => {
+    const business = visibleSections(navigationTree)
+    return me?.roles.includes('SYSTEM_ADMIN') ? [...business, LAB_SECTION] : business
+  }, [navigationTree, me])
 
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
@@ -139,6 +149,7 @@ export function AppLayout() {
 
           <div className="ml-auto flex items-center gap-1">
             <DeveloperModeChip />
+            <ThemeToggle />
             <NotificationMenu />
             <UserMenu
               name={profile.fullName ?? me?.username ?? ''}

@@ -122,6 +122,13 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: LayoutGrid,
         description: 'Phân hệ, màn hình và nhóm thông tin',
       },
+      {
+        screenCode: 'PERMISSION_DECISION_TRACE',
+        label: 'Kiểm tra quyền hiệu lực',
+        to: '/admin/effective-permissions',
+        icon: ShieldCheck,
+        description: 'Vì sao user được hoặc không được một quyền',
+      },
     ],
   },
   {

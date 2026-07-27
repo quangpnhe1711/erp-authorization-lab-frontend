@@ -18,7 +18,7 @@ type ButtonSize = 'sm' | 'md' | 'lg'
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-brand-500 text-white shadow-card hover:bg-brand-600 active:bg-brand-700',
-  secondary: 'border border-line-strong bg-white text-ink-secondary shadow-card hover:bg-surface-muted hover:text-ink',
+  secondary: 'border border-line-strong bg-surface text-ink-secondary shadow-card hover:bg-surface-muted hover:text-ink',
   ghost: 'text-ink-muted hover:bg-line/70 hover:text-ink',
   danger: 'border border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100',
 }
@@ -256,7 +256,7 @@ export function Label({ htmlFor, children, hint }: { htmlFor?: string; children:
 }
 
 const FIELD = clsx(
-  'h-10 w-full rounded-control border border-line-strong bg-white px-3 text-base text-ink transition-colors',
+  'h-10 w-full rounded-control border border-line-strong bg-surface px-3 text-base text-ink transition-colors',
   'placeholder:text-ink-subtle hover:border-ink-subtle/60',
   'focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15',
   'disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-subtle',
@@ -338,7 +338,7 @@ export function Switch({
     >
       <span
         className={clsx(
-          'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
+          'absolute top-0.5 h-4 w-4 rounded-full bg-surface shadow-sm transition-transform duration-200',
           checked ? 'translate-x-[18px]' : 'translate-x-0.5',
         )}
       />
